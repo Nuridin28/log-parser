@@ -17,6 +17,10 @@ export interface BuildResult {
   unresolved: StackFrame[];
 }
 
+export interface BuildOptions {
+  includeClient?: boolean;
+}
+
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -51,43 +55,37 @@ function baseConfidence(ev: Event): number {
   return Math.min(1, c);
 }
 
-export function buildEdges(events: readonly Event[]): BuildResult {
+export function buildEdges(events: readonly Event[], opts: BuildOptions = {}): BuildResult {
+  const includeClient = opts.includeClient ?? false;
   const edges: Edge[] = [];
   const stack: StackFrame[] = [];
 
   for (const ev of events) {
     if (ev.type === "IN" || ev.type === "OUT") {
-      const edge = handleRequest(ev, edges);
+      const edge = handleRequest(ev, edges, includeClient);
+      // Root frames (edge=null) still occupy a stack slot so sibling
+      // detection and response matching keep working.
       stack.push({ ev, edge });
     } else if (ev.type === "RESPONSE") {
-      handleResponse(ev, stack, edges);
-    } else {
-      edges.push(
-        makeEdge({
-          from: ev.sender ?? ev.service ?? "unknown",
-          to: ev.receiver ?? peerOf(ev) ?? ev.service ?? "unknown",
-          type: "UNKNOWN",
-          ev,
-          confidence: 0.3,
-          evidence: [ev.id],
-        }),
-      );
+      handleResponse(ev, stack, edges, includeClient);
     }
+    // UNKNOWN events are intermediate/trace-only — skip.
   }
 
   return { edges, unresolved: stack };
 }
 
-function handleRequest(ev: Event, edges: Edge[]): Edge {
-  let from: string;
+function handleRequest(ev: Event, edges: Edge[], includeClient: boolean): Edge | null {
+  let from: string | null;
   let to: string;
   if (ev.type === "IN") {
-    from = ev.sender ?? CLIENT;
+    from = ev.sender ?? (includeClient ? CLIENT : null);
     to = ev.service;
   } else {
     from = ev.service;
     to = ev.receiver ?? peerOf(ev) ?? "unknown";
   }
+  if (from == null) return null; // root entry — no visible edge
   const edge = makeEdge({
     from,
     to,
@@ -100,11 +98,20 @@ function handleRequest(ev: Event, edges: Edge[]): Edge {
   return edge;
 }
 
-function handleResponse(ev: Event, stack: StackFrame[], edges: Edge[]): void {
+function handleResponse(
+  ev: Event,
+  stack: StackFrame[],
+  edges: Edge[],
+  includeClient: boolean,
+): void {
   if (stack.length === 0) {
     // No open request to match — synthesize an INFERRED_REQUEST (Case 2).
+    // If we can't identify a plausible caller, we only keep the RESPONSE
+    // from the responder's perspective; no phantom `client` node is added
+    // unless includeClient is on.
     const responder = ev.service;
-    const caller = ev.receiver ?? ev.sender ?? peerOf(ev) ?? CLIENT;
+    const caller = ev.receiver ?? ev.sender ?? peerOf(ev) ?? (includeClient ? CLIENT : null);
+    if (caller == null) return; // no one to respond to — drop
     edges.push(
       makeEdge({
         from: caller,
@@ -134,8 +141,6 @@ function handleResponse(ev: Event, stack: StackFrame[], edges: Edge[]): void {
   let matchIndex = match ? candidates.indexOf(match) : -1;
   if (matchIndex === -1) matchIndex = stack.length - 1;
 
-  // Frames above the match: siblings (same caller) stay on the stack;
-  // genuine skips get closed with INFERRED_RESPONSE.
   const matched = stack[matchIndex]!;
   const matchedCaller = matched.ev.service;
   const preserved: StackFrame[] = [];
@@ -143,7 +148,8 @@ function handleResponse(ev: Event, stack: StackFrame[], edges: Edge[]): void {
     const upper = stack[i]!;
     if (upper.ev.service === matchedCaller) {
       preserved.unshift(upper);
-    } else {
+    } else if (upper.edge) {
+      // Skipped: emit INFERRED_RESPONSE back to its caller.
       edges.push(
         makeEdge({
           from: upper.edge.to,
@@ -155,18 +161,22 @@ function handleResponse(ev: Event, stack: StackFrame[], edges: Edge[]): void {
         }),
       );
     }
+    // Root frames with no edge are silently dropped.
   }
 
-  edges.push(
-    makeEdge({
-      from: matched.edge.to,
-      to: matched.edge.from,
-      type: "RESPONSE",
-      ev,
-      confidence: Math.max(0.5, s),
-      evidence: [matched.ev.id, ev.id],
-    }),
-  );
+  // Emit RESPONSE edge only if the matched frame had a visible REQUEST edge.
+  if (matched.edge) {
+    edges.push(
+      makeEdge({
+        from: matched.edge.to,
+        to: matched.edge.from,
+        type: "RESPONSE",
+        ev,
+        confidence: Math.max(0.5, s),
+        evidence: [matched.ev.id, ev.id],
+      }),
+    );
+  }
 
   stack.length = matchIndex;
   for (const sib of preserved) stack.push(sib);

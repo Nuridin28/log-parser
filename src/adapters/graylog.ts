@@ -1,13 +1,13 @@
 // Adapter: Graylog / GELF MessageContent → pipeline RawEvent.
 //
-// Fields that already come structured (container, timestamp, request_id)
+// Fields that already come structured (container, timestamp, requestId)
 // are lifted directly — we skip Stage 1 parsing for them. The inner
 // `message` text is still passed through the normalizer so URL / method /
 // status / sender / receiver get extracted as before.
 //
 // Usage:
 //   import { fromMessageContent } from "./adapters/graylog.ts";
-//   const trace = run(fromMessageContent(messages), { preParsed: true });
+//   const trace = run(fromMessageContent(messages));
 
 import type { MessageContent, RawEvent } from "../types.ts";
 
@@ -23,7 +23,8 @@ const LEVEL_NAMES: Record<number, string> = {
   7: "DEBUG",
 };
 
-function parseIsoTimestamp(iso: string): number | null {
+function parseIsoTimestamp(iso: string | undefined): number | null {
+  if (!iso) return null;
   const t = Date.parse(iso);
   return Number.isFinite(t) ? t : null;
 }
@@ -35,19 +36,17 @@ function parseIsoTimestamp(iso: string): number | null {
  * Order of preference:
  *   container  — directly the container/app name (best)
  *   component  — a logical component identifier
- *   source     — syslog source (often the hostname or app name)
- *   pod        — k8s pod name (e.g. "payment-7d9c8f4b6-xy2z3" — strip the
- *                ReplicaSet hash to get "payment")
+ *   service    — what the running code calls itself (real logs often have this)
+ *   pod        — k8s pod name (strip Deployment hash suffix)
+ *   source     — fluentd / syslog source
  *   hostname   — last resort
- *
- * For `pod`, we strip the trailing `-<rshash>-<podhash>` pattern so that
- * all pods of one Deployment collapse to a single service node.
  */
 function deriveContainer(m: MessageContent): string | null {
   if (m.container) return m.container;
   if (m.component) return m.component;
-  if (m.source) return m.source;
+  if (m.service) return m.service;
   if (m.pod) return stripPodSuffix(m.pod);
+  if (m.source) return m.source;
   if (m.hostname) return m.hostname;
   return null;
 }
@@ -57,13 +56,18 @@ function stripPodSuffix(pod: string): string {
   return pod.replace(POD_SUFFIX_RE, "");
 }
 
+/** Accept either snake_case `request_id` or camelCase `requestId`. */
+function pickRequestId(m: MessageContent): string | undefined {
+  return m.requestId ?? m.request_id;
+}
+
 /**
- * Convert a MessageContent[] into RawEvent[], preserving the `request_id`
- * correlation ID in a side-channel that the normalizer picks up.
+ * Convert a MessageContent[] into RawEvent[].
  *
- * We encode `request_id` into the `message` as `requestId=<id>` so the
- * existing key=value extractor in normalizer.ts lifts it into
- * `Event.requestId` without any changes to the pipeline.
+ * We append `requestId=<id>` to the message so the existing key=value
+ * extractor in normalizer.ts lifts it into `Event.requestId` without
+ * changes to the pipeline. (Many messages already contain `[requestId=...]`
+ * inline — duplicates are harmless.)
  */
 export function fromMessageContent(messages: readonly MessageContent[]): RawEvent[] {
   const out: RawEvent[] = [];
@@ -71,13 +75,17 @@ export function fromMessageContent(messages: readonly MessageContent[]): RawEven
   for (const m of messages) {
     lineNo += 1;
     const ts = parseIsoTimestamp(m.timestamp) ?? parseIsoTimestamp(m.time);
-    const rid = m.request_id ? ` requestId=${m.request_id}` : "";
+    const rid = pickRequestId(m);
+    const rawMessage = typeof m.message === "string" ? m.message : String(m.message);
+    const enrichedMessage = rid ? `${rawMessage} requestId=${rid}` : rawMessage;
+    const level = typeof m.level === "number" ? LEVEL_NAMES[m.level] ?? null : null;
+
     out.push({
       timestamp: ts,
-      level: LEVEL_NAMES[m.level] ?? null,
+      level,
       container: deriveContainer(m),
-      message: `${m.message}${rid}`,
-      raw: m.message,
+      message: enrichedMessage,
+      raw: rawMessage,
       lineNo,
     });
   }

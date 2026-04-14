@@ -2,40 +2,40 @@
 
 /**
  * Graylog / GELF message as delivered by the logging stack.
- * Most fields are already structured — we lift them into `Event`
- * directly and only apply the message-parser to the inner `message`.
+ * Only `message` is strictly required — every other field may be missing
+ * in practice, so all are optional. The adapter picks the best source for
+ * each slot it cares about (see `deriveContainer` in adapters/graylog.ts).
+ *
+ * Both snake_case (`request_id`) and camelCase (`requestId`) correlation-id
+ * variants are supported — different log pipelines emit different casings.
  */
 export interface MessageContent {
-  container: string;
-  component?: string;
-  tenant_id: string;
-  pod: string;
-  gl2_remote_ip: string;
-  gl2_remote_port: number;
-  source: string;
-  gl2_source_input: string;
-  docker: string;
-  protocol: number;
-  hostname: string;
-  log_type: string;
-  du_stream_id?: string;
-  gl2_source_node: string;
-  tag: string;
-  class: string;
-  timestamp: string;
-  gl2_accounted_message_size: number;
-  level: number;
-  streams: string[] | [];
-  gl2_message_id: string;
-  thread: string;
   message: string;
-  labels: string;
-  namespace: string;
-  _id: string;
-  time: string;
-  kubernetes_host: string;
-  facility: string;
-  request_id: string;
+
+  // Service identification (adapter tries these in order)
+  container?: string;
+  component?: string;
+  service?: string;
+  pod?: string;
+  source?: string;
+  hostname?: string;
+
+  // Correlation IDs
+  request_id?: string;
+  requestId?: string;
+  traceId?: string;
+  spanId?: string;
+  tenant_id?: string;
+
+  // Time
+  timestamp?: string;
+  time?: string;
+
+  // Severity (0–7 syslog)
+  level?: number;
+
+  // Everything else — Graylog stuffs dozens of fields we ignore.
+  [extra: string]: unknown;
 }
 
 //
@@ -103,10 +103,17 @@ export interface Edge {
   evidence: string[];
 }
 
-/** A pending REQUEST waiting on a RESPONSE. Lives on the matcher's stack. */
+/**
+ * A pending REQUEST waiting on a RESPONSE. Lives on the matcher's stack.
+ *
+ * `edge` is null for "root" entry frames — IN events without an
+ * identifiable sender when `includeClient: false`. They still take a
+ * stack slot so response-matching and sibling detection work, but no
+ * visible edge is drawn on the diagram.
+ */
 export interface StackFrame {
   ev: Event;
-  edge: Edge;
+  edge: Edge | null;
 }
 
 /** Public, slim edge — the shape consumers render on a diagram. */
@@ -149,6 +156,17 @@ export interface Trace {
 
 export interface PipelineOptions {
   debug?: boolean;
+  /**
+   * Whether to emit a synthetic `client` node for entry/exit edges of IN
+   * events that have no identifiable sender. Default: false.
+   *
+   * With `false` (default): the first service in the trace is treated as
+   * the entry point; no phantom caller appears on the diagram. Unresolved
+   * root REQUESTs are silently dropped.
+   *
+   * With `true`: matches spec §10 case 1 — `client → api → ... → api → client`.
+   */
+  includeClient?: boolean;
 }
 
 export interface DebugTrace {

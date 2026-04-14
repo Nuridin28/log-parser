@@ -1,0 +1,59 @@
+[
+  {
+    "container": "service",
+    "pod": "service-697f556d46-fc8b8",
+    "hostname": "logging-fluentd-9n8d5",
+    "requestId": "6d9af0ec-b28d-46aa-bda6-727b91e07779",
+    "timestamp": "2026-04-13T11:54:26.615Z",
+    "level": 7,
+    "message": "[2026-04-13T11:54:26.615Z] [DEBUG] [context=Middleware] [requestId=6d9af0ec-b28d-46aa-bda6-727b91e07779] Incoming request: POST /api/url"
+  },
+  {
+    "container": "service",
+    "pod": "service-697f556d46-fc8b8",
+    "hostname": "logging-fluentd-9n8d5",
+    "requestId": "6d9af0ec-b28d-46aa-bda6-727b91e07779",
+    "timestamp": "2026-04-13T11:54:26.621Z",
+    "level": 7,
+    "message": "[2026-04-13T11:54:26.620Z] [DEBUG] [context=API Route] [requestId=6d9af0ec-b28d-46aa-bda6-727b91e07779] API route request { method: 'POST', pathname: '/api/url' }"
+  },
+  {
+    "service": "service2",
+    "hostname": "logging-fluentd-hgmwq",
+    "requestId": "6d9af0ec-b28d-46aa-bda6-727b91e07779",
+    "traceId": "bd4307b6-2df9-420f-bcea-d3d6ad6d0a7b",
+    "timestamp": "2026-04-13T11:54:27.308Z",
+    "level": 6,
+    "message": "[2026-04-13T11:54:26.664Z] [INFO] [requestId=6d9af0ec-b28d-46aa-bda6-727b91e07779] [traceId=bd4307b6-2df9-420f-bcea-d3d6ad6d0a7b] [service=service2] HTTP Incoming Request {\"request\":{\"id\":\"6d9af0ec-b28d-46aa-bda6-727b91e07779\",\"method\":\"POST\",\"url\":\"/api/identity/v2/access_token\"}}"
+  },
+  {
+    "container": "service2",
+    "pod": "service2-6c856cc88c-8lkmh",
+    "hostname": "logging-fluentd-hgmwq",
+    "requestId": "6d9af0ec-b28d-46aa-bda6-727b91e07779",
+    "traceId": "bd4307b6-2df9-420f-bcea-d3d6ad6d0a7b",
+    "timestamp": "2026-04-13T11:54:27.309Z",
+    "level": 6,
+    "message": "[2026-04-13T11:54:26.668Z] [INFO] [requestId=6d9af0ec-b28d-46aa-bda6-727b91e07779] [service=service2] Proxy Outgoing Request {\"request\":{\"url\":\"ipOfServiceOutg/authrealms/customer/protocol/openid-connect/token\",\"method\":\"POST\"}}"
+  },
+  {
+    "container": "service2",
+    "pod": "service2-6c856cc88c-8lkmh",
+    "hostname": "logging-fluentd-hgmwq",
+    "requestId": "6d9af0ec-b28d-46aa-bda6-727b91e07779",
+    "traceId": "bd4307b6-2df9-420f-bcea-d3d6ad6d0a7b",
+    "timestamp": "2026-04-13T11:54:27.310Z",
+    "level": 6,
+    "message": "[2026-04-13T11:54:26.681Z] [INFO] [requestId=6d9af0ec-b28d-46aa-bda6-727b91e07779] [service=service2] Proxy Incoming Response {\"response\":{\"url\":\"ipOfServiceOutg/authrealms/customer/protocol/openid-connect/token\",\"status\":200}}"
+  },
+  {
+    "container": "service2",
+    "pod": "service2-6c856cc88c-8lkmh",
+    "hostname": "logging-fluentd-hgmwq",
+    "requestId": "6d9af0ec-b28d-46aa-bda6-727b91e07779",
+    "traceId": "bd4307b6-2df9-420f-bcea-d3d6ad6d0a7b",
+    "timestamp": "2026-04-13T11:54:27.311Z",
+    "level": 6,
+    "message": "[2026-04-13T11:54:26.683Z] [INFO] [requestId=6d9af0ec-b28d-46aa-bda6-727b91e07779] [service=service2] HTTP Outgoing Response {\"request\":{\"id\":\"6d9af0ec-b28d-46aa-bda6-727b91e07779\",\"method\":\"POST\",\"url\":\"/service2/identity/v2/access_token\"},\"response\":{\"status\":200}}"
+  }
+]

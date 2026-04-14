@@ -19,11 +19,25 @@ export const EXTERNAL_PREFIX = "external:";
 export const VIRTUAL_PREFIX = "virtual:";
 export const UNKNOWN_PREFIX = "unknown:";
 
-/** Host part of a URL (no path). Relative paths return themselves. */
+/**
+ * Extract the host from a URL.
+ *
+ *   https://api.stripe.com/charges        → "api.stripe.com"
+ *   http://payment:8080/api               → "payment:8080"
+ *   ipOfServiceOutg/auth/realms/token     → "ipOfServiceOutg"   (no protocol)
+ *   /api/url                              → "/api/url"          (pure path)
+ *
+ * When the input has no protocol and no leading slash, we treat everything
+ * before the first "/" as the host — real logs often omit the scheme but
+ * still put host-like tokens up front.
+ */
 export function urlHost(url: string): string {
   const abs = url.match(/^https?:\/\/([^\/\s?#]+)/i);
   if (abs) return abs[1]!;
-  return url.split(/[?#]/)[0]!;
+  if (url.startsWith("/")) return url.split(/[?#]/)[0]!;
+  const slash = url.indexOf("/");
+  const beforeSlash = slash === -1 ? url : url.slice(0, slash);
+  return beforeSlash.split(/[?#]/)[0]!;
 }
 
 /** Strip ":port" suffix from a host. "payment:8080" → "payment". */

@@ -5,6 +5,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Trace } from "../src/types.ts";
 import { run } from "../src/pipeline.ts";
+import { fromMessageContent } from "../src/adapters/graylog.ts";
+import type { MessageContent } from "../src/types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXAMPLES = join(__dirname, "..", "examples");
@@ -99,6 +101,48 @@ test("case7 — URL to known internal container resolves to that container (not 
     (e) => e.from === "api" && e.to === "payment" && e.type === "REQUEST",
   );
   assert.ok(apiToPayment, "expected REQUEST edge api→payment");
+});
+
+test("case8 — real Graylog trace: service → service2 → external → service2 → service", () => {
+  const raw = readFileSync(join(EXAMPLES, "case8-graylog-real.json"), "utf8");
+  const messages = JSON.parse(raw) as MessageContent[];
+  const graph = run(fromMessageContent(messages));
+
+  // Expected causal chain
+  const nonInferred = graph.edges.filter((e) => !e.type.startsWith("INFERRED"));
+  const chain = nonInferred.map((e) => `${e.from}→${e.to}:${e.type}`);
+
+  // service → service2 must exist (correlated by requestId)
+  assert.ok(
+    graph.edges.some((e) => e.from === "service" && e.to === "service2" && e.type === "REQUEST"),
+    `missing service → service2 REQUEST. edges: ${chain.join(" | ")}`,
+  );
+  // service2 → external (the protocol-less URL resolves to external host)
+  assert.ok(
+    graph.edges.some(
+      (e) => e.from === "service2" && e.to.startsWith("external:") && e.type === "REQUEST",
+    ),
+    `missing service2 → external REQUEST. edges: ${chain.join(" | ")}`,
+  );
+  // external → service2 (response from the third party)
+  assert.ok(
+    graph.edges.some(
+      (e) => e.from.startsWith("external:") && e.to === "service2" && e.type === "RESPONSE",
+    ),
+    `missing external → service2 RESPONSE. edges: ${chain.join(" | ")}`,
+  );
+  // service2 → service (response back up the chain)
+  assert.ok(
+    graph.edges.some((e) => e.from === "service2" && e.to === "service" && e.type === "RESPONSE"),
+    `missing service2 → service RESPONSE. edges: ${chain.join(" | ")}`,
+  );
+
+  // Services diagram shows service, service2 as containers + one external
+  const kinds = new Map(graph.services.map((s) => [s.name, s.kind]));
+  assert.equal(kinds.get("service"), "container");
+  assert.equal(kinds.get("service2"), "container");
+  const externals = graph.services.filter((s) => s.kind === "external");
+  assert.equal(externals.length, 1, `expected 1 external node, got ${externals.length}`);
 });
 
 test("service kinds are classified correctly", () => {

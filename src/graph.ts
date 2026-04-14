@@ -24,12 +24,23 @@ export interface BuildGraphInput {
   edges: Edge[];
   unresolved: StackFrame[];
   events: readonly Event[];
+  includeClient?: boolean;
 }
 
-export function buildGraph({ edges, unresolved, events }: BuildGraphInput): Trace {
+export function buildGraph({
+  edges,
+  unresolved,
+  events,
+  includeClient = false,
+}: BuildGraphInput): Trace {
   const closedEdges = edges.slice();
   // Close unresolved frames so the graph is never "open" — spec §12.
   for (const frame of unresolved) {
+    // Root frames (no visible REQUEST edge) are entry points with nowhere
+    // to return to; we only close them if includeClient explicitly asks
+    // for the synthetic `client` lifeline.
+    if (!frame.edge) continue;
+    if (!includeClient && frame.edge.from === "client") continue;
     closedEdges.push({
       from: frame.edge.to,
       to: frame.edge.from,

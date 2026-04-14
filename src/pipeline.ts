@@ -12,6 +12,7 @@ import type { DebugTrace, Event, PipelineOptions, RawEvent, Trace } from "./type
 import { parseLines } from "./parser.ts";
 import { normalize, resetIds } from "./normalizer.ts";
 import { classify } from "./classifier.ts";
+import { correlate } from "./correlate.ts";
 import { virtualize } from "./virtualize.ts";
 import { buildEdges } from "./stack.ts";
 import { buildGraph } from "./graph.ts";
@@ -46,7 +47,8 @@ export function run(input: PipelineInput, opts: PipelineOptions = {}): Trace | D
 
   const normalized = normalize(parsed);
   const classified = classify(normalized);
-  const virtualized = virtualize(classified);
+  const correlated = correlate(classified);
+  const virtualized = virtualize(correlated);
 
   // Stable sort by timestamp — events without a timestamp keep their
   // original position among themselves.
@@ -63,8 +65,13 @@ export function run(input: PipelineInput, opts: PipelineOptions = {}): Trace | D
     })
     .map((x) => x.ev);
 
-  const { edges, unresolved } = buildEdges(ordered);
-  const graph = buildGraph({ edges, unresolved, events: ordered });
+  const { edges, unresolved } = buildEdges(ordered, { includeClient: opts.includeClient });
+  const graph = buildGraph({
+    edges,
+    unresolved,
+    events: ordered,
+    includeClient: opts.includeClient,
+  });
 
   return opts.debug ? { graph, events: ordered } : graph;
 }
