@@ -1,14 +1,14 @@
-// Pipeline — orchestrates the six stages end to end.
+// Pipeline — orchestrates the stages end to end.
 //
-//   raw lines
-//     → parser      (Stage 1)
+//   raw lines / RawEvent[]
+//     → parser      (Stage 1 — skipped if input is already RawEvent[])
 //     → normalizer  (Stage 2)
 //     → classifier  (Stage 3)
 //     → virtualize  (virtual nodes)
 //     → stack       (core algorithm + backtracking)
 //     → graph       (final public Trace)
 
-import type { DebugTrace, Event, PipelineOptions, Trace } from "./types.ts";
+import type { DebugTrace, Event, PipelineOptions, RawEvent, Trace } from "./types.ts";
 import { parseLines } from "./parser.ts";
 import { normalize, resetIds } from "./normalizer.ts";
 import { classify } from "./classifier.ts";
@@ -16,19 +16,34 @@ import { virtualize } from "./virtualize.ts";
 import { buildEdges } from "./stack.ts";
 import { buildGraph } from "./graph.ts";
 
-export function run(rawInput: string | readonly string[]): Trace;
-export function run(rawInput: string | readonly string[], opts: { debug: true }): DebugTrace;
-export function run(
-  rawInput: string | readonly string[],
-  opts?: PipelineOptions,
-): Trace | DebugTrace;
-export function run(
-  rawInput: string | readonly string[],
-  opts: PipelineOptions = {},
-): Trace | DebugTrace {
+export type PipelineInput = string | readonly string[] | readonly RawEvent[];
+
+function isRawEventArray(x: PipelineInput): x is readonly RawEvent[] {
+  return (
+    Array.isArray(x) &&
+    x.length > 0 &&
+    typeof x[0] === "object" &&
+    x[0] !== null &&
+    "message" in (x[0] as object) &&
+    "lineNo" in (x[0] as object)
+  );
+}
+
+export function run(input: PipelineInput): Trace;
+export function run(input: PipelineInput, opts: { debug: true }): DebugTrace;
+export function run(input: PipelineInput, opts?: PipelineOptions): Trace | DebugTrace;
+export function run(input: PipelineInput, opts: PipelineOptions = {}): Trace | DebugTrace {
   resetIds();
-  const lines = Array.isArray(rawInput) ? rawInput : (rawInput as string).split(/\r?\n/);
-  const parsed = parseLines(lines);
+
+  let parsed: RawEvent[];
+  if (typeof input === "string") {
+    parsed = parseLines(input.split(/\r?\n/));
+  } else if (isRawEventArray(input)) {
+    parsed = input.slice();
+  } else {
+    parsed = parseLines(input as readonly string[]);
+  }
+
   const normalized = normalize(parsed);
   const classified = classify(normalized);
   const virtualized = virtualize(classified);

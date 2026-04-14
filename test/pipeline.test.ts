@@ -68,5 +68,27 @@ test("output shape — { requestId, edges:{from,to,message,type}, services }", (
     assert.ok("message" in e);
   }
   const referenced = new Set(graph.edges.flatMap((e) => [e.from, e.to]));
-  for (const node of referenced) assert.ok(graph.services.includes(node));
+  const serviceNames = new Set(graph.services.map((s) => s.name));
+  for (const node of referenced) assert.ok(serviceNames.has(node), `missing service: ${node}`);
+});
+
+test("case6 — multiple calls to same third-party collapse to one external node", () => {
+  const graph = run(load("case6-third-party.log"));
+  const stripeNodes = graph.services.filter(
+    (s) => s.kind === "external" && s.host === "api.stripe.com",
+  );
+  assert.equal(stripeNodes.length, 1, "expected exactly one external:api.stripe.com node");
+  // Two distinct calls to that host should still produce two REQUEST + two RESPONSE edges.
+  const stripeReqs = graph.edges.filter(
+    (e) => e.to === "external:api.stripe.com" && e.type === "REQUEST",
+  );
+  assert.equal(stripeReqs.length, 2);
+});
+
+test("service kinds are classified correctly", () => {
+  const graph = run(load("case6-third-party.log"));
+  const kinds = new Map(graph.services.map((s) => [s.name, s.kind]));
+  assert.equal(kinds.get("api"), "container");
+  assert.equal(kinds.get("external:api.stripe.com"), "external");
+  assert.equal(kinds.get("client"), "client");
 });

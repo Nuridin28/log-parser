@@ -8,7 +8,8 @@
 //     parallel?: true
 //   }
 
-import type { Edge, Event, PublicEdge, StackFrame, Trace } from "./types.ts";
+import type { Edge, Event, PublicEdge, ServiceKind, ServiceNode, StackFrame, Trace } from "./types.ts";
+import { EXTERNAL_PREFIX, UNKNOWN_PREFIX, VIRTUAL_PREFIX } from "./virtualize.ts";
 
 let REQUEST_ID = 0;
 function nextRequestId(): string {
@@ -62,19 +63,32 @@ export function buildGraph({ edges, unresolved, events }: BuildGraphInput): Trac
   return trace;
 }
 
-function collectServices(edges: readonly Edge[]): string[] {
+function classifyNode(name: string): ServiceNode {
+  if (name === "client") return { name, kind: "client" };
+  if (name.startsWith(EXTERNAL_PREFIX)) {
+    return { name, kind: "external", host: name.slice(EXTERNAL_PREFIX.length) };
+  }
+  if (name.startsWith(VIRTUAL_PREFIX)) return { name, kind: "virtual" };
+  if (name.startsWith(UNKNOWN_PREFIX)) return { name, kind: "unknown" };
+  return { name, kind: "container" };
+}
+
+function collectServices(edges: readonly Edge[]): ServiceNode[] {
   const seen = new Set<string>();
-  const order: string[] = [];
+  const order: ServiceNode[] = [];
   for (const e of edges) {
     for (const node of [e.from, e.to]) {
       if (node && !seen.has(node)) {
         seen.add(node);
-        order.push(node);
+        order.push(classifyNode(node));
       }
     }
   }
   return order;
 }
+
+// Re-export so callers can satisfy the compiler without importing from types.
+export type { ServiceKind };
 
 function aggregateConfidence(edges: readonly Edge[]): number {
   if (edges.length === 0) return 0;

@@ -1,0 +1,6 @@
+[10:00:06.000] INFO api Incoming request: POST /charge
+[10:00:06.100] INFO api Proxy Outgoing Request {"request":{"url":"https://api.stripe.com/v1/charges","method":"POST"}}
+[10:00:06.600] INFO api Proxy Incoming Response {"response":{"url":"https://api.stripe.com/v1/charges","status":200}}
+[10:00:06.700] INFO api Proxy Outgoing Request {"request":{"url":"https://api.stripe.com/v1/customers","method":"GET"}}
+[10:00:06.900] INFO api Proxy Incoming Response {"response":{"url":"https://api.stripe.com/v1/customers","status":200}}
+[10:00:07.100] INFO api Response 200
