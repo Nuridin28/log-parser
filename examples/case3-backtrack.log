@@ -1,0 +1,4 @@
+[10:00:03.000] INFO A sender=A receiver=B method=POST url=/step1
+[10:00:03.100] INFO B sender=B receiver=C method=POST url=/step2
+[10:00:03.200] INFO C sender=C receiver=D method=POST url=/step3
+[10:00:03.700] INFO B Response from D status=200 sender=D receiver=B

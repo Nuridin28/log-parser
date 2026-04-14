@@ -1,0 +1,6 @@
+[10:00:01.123] INFO api Incoming request: POST /api/url
+[10:00:01.200] INFO api Proxy Outgoing Request {"request":{"url":"https://ip/url","method":"POST"}}
+[10:00:01.350] INFO payment Incoming request POST /payment
+[10:00:01.500] INFO payment http_status=200
+[10:00:01.700] INFO api Proxy Incoming Response {"response":{"url":"https://ip/url","status":200}}
+[10:00:01.900] INFO api Response 200

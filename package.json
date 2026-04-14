@@ -1,0 +1,19 @@
+{
+  "name": "log-trace-parser",
+  "version": "0.1.0",
+  "description": "Probabilistic distributed tracing engine built from unstructured logs",
+  "type": "module",
+  "bin": {
+    "parse": "src/index.ts"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "demo": "node src/index.ts --demo",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,2 @@
+[10:00:04.000] INFO api sender=api receiver=payment method=POST url=/pay
+[10:00:04.200] INFO payment status=200 sender=payment receiver=api

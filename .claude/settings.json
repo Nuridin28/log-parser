@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --test test/)",
+      "Bash(node --test test/*.test.js)",
+      "Bash(node --test --experimental-strip-types test/*.test.ts)",
+      "Bash(npx -y -p typescript@5.6.0 tsc --noEmit)",
+      "Bash(npx -y -p typescript@5.6.3 tsc --noEmit)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(node src/index.ts examples/case1-normal.log)"
+    ],
+    "additionalDirectories": [
+      "/Users/nuridinnurman/Desktop/parser/src"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+[10:00:05.000] INFO api Proxy Outgoing Request {"request":{"url":"https://payment/pay","method":"POST"},"receiver":"payment","sender":"api"}
+[10:00:05.050] INFO api Proxy Outgoing Request {"request":{"url":"https://notify/ping","method":"POST"},"receiver":"notify","sender":"api"}
+[10:00:05.300] INFO api Proxy Incoming Response {"response":{"url":"https://payment/pay","status":200},"sender":"payment","receiver":"api"}
+[10:00:05.400] INFO api Proxy Incoming Response {"response":{"url":"https://notify/ping","status":200},"sender":"notify","receiver":"api"}
