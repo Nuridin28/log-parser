@@ -85,6 +85,22 @@ test("case6 — multiple calls to same third-party collapse to one external node
   assert.equal(stripeReqs.length, 2);
 });
 
+test("case7 — URL to known internal container resolves to that container (not external)", () => {
+  const graph = run(load("case7-internal-url.log"));
+  // "payment" is a known container in this log (it writes its own entries),
+  // so api's outgoing call to http://payment:8080/... must target the
+  // container "payment" — NOT "external:payment".
+  const externals = graph.services.filter((s) => s.kind === "external");
+  assert.equal(externals.length, 0, `expected no external nodes, got: ${JSON.stringify(externals)}`);
+  const paymentNode = graph.services.find((s) => s.name === "payment");
+  assert.ok(paymentNode, "expected payment node present");
+  assert.equal(paymentNode.kind, "container");
+  const apiToPayment = graph.edges.find(
+    (e) => e.from === "api" && e.to === "payment" && e.type === "REQUEST",
+  );
+  assert.ok(apiToPayment, "expected REQUEST edge api→payment");
+});
+
 test("service kinds are classified correctly", () => {
   const graph = run(load("case6-third-party.log"));
   const kinds = new Map(graph.services.map((s) => [s.name, s.kind]));

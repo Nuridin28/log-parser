@@ -18,6 +18,7 @@ function ev(over: Partial<Event> & { type: Event["type"]; service: string }): Ev
     sender: over.sender ?? null,
     receiver: over.receiver ?? null,
     requestId: over.requestId ?? null,
+    resolvedPeer: over.resolvedPeer ?? over.receiver ?? null,
     message: over.message ?? "",
     raw: over.raw ?? "",
     lineNo: 0,

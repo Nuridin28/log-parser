@@ -29,6 +29,35 @@ function parseIsoTimestamp(iso: string): number | null {
 }
 
 /**
+ * Pick the most specific identifier of the source service. Some log
+ * pipelines leave `container` empty but carry enough hints elsewhere.
+ *
+ * Order of preference:
+ *   container  — directly the container/app name (best)
+ *   component  — a logical component identifier
+ *   source     — syslog source (often the hostname or app name)
+ *   pod        — k8s pod name (e.g. "payment-7d9c8f4b6-xy2z3" — strip the
+ *                ReplicaSet hash to get "payment")
+ *   hostname   — last resort
+ *
+ * For `pod`, we strip the trailing `-<rshash>-<podhash>` pattern so that
+ * all pods of one Deployment collapse to a single service node.
+ */
+function deriveContainer(m: MessageContent): string | null {
+  if (m.container) return m.container;
+  if (m.component) return m.component;
+  if (m.source) return m.source;
+  if (m.pod) return stripPodSuffix(m.pod);
+  if (m.hostname) return m.hostname;
+  return null;
+}
+
+const POD_SUFFIX_RE = /-[a-z0-9]{5,10}-[a-z0-9]{5}$/;
+function stripPodSuffix(pod: string): string {
+  return pod.replace(POD_SUFFIX_RE, "");
+}
+
+/**
  * Convert a MessageContent[] into RawEvent[], preserving the `request_id`
  * correlation ID in a side-channel that the normalizer picks up.
  *
@@ -46,7 +75,7 @@ export function fromMessageContent(messages: readonly MessageContent[]): RawEven
     out.push({
       timestamp: ts,
       level: LEVEL_NAMES[m.level] ?? null,
-      container: m.container || m.component || null,
+      container: deriveContainer(m),
       message: `${m.message}${rid}`,
       raw: m.message,
       lineNo,

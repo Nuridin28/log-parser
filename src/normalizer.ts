@@ -113,6 +113,7 @@ export function normalize(events: readonly RawEvent[]): Event[] {
       sender,
       receiver,
       requestId,
+      resolvedPeer: null,
       message: ev.message,
       raw: ev.raw,
       lineNo: ev.lineNo,

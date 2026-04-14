@@ -16,6 +16,7 @@ function ev(over: Partial<Event>): Event {
     sender: null,
     receiver: null,
     requestId: null,
+    resolvedPeer: null,
     message: "",
     raw: "",
     lineNo: 0,

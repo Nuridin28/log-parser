@@ -79,6 +79,13 @@ export interface Event {
   receiver: string | null;
   /** Correlation ID extracted from the log itself (NOT the trace-level id). */
   requestId: string | null;
+  /**
+   * Virtualize-resolved peer (the "other side" of the conversation).
+   * Populated during virtualization when we can identify the target —
+   * either an internal container whose host appears in the URL, or an
+   * external host. Null if the event has no URL and no receiver.
+   */
+  resolvedPeer: string | null;
   message: string;
   raw: string;
   lineNo: number;
