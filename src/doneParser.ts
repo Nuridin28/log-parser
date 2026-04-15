@@ -118,9 +118,30 @@ export interface MessageContent {
   traceId?: string;
   spanId?: string;
   tenant_id?: string;
-  timestamp?: string;
-  time?: string;
+
+  /** ISO string OR epoch milliseconds. Both are accepted. */
+  timestamp?: string | number;
+  time?: string | number;
   level?: number;
+
+  /**
+   * Explicit direction of the event — bypasses message-text classification.
+   * Accepts any of:
+   *   "IN"  | "OUT"  | "RESPONSE"     (canonical)
+   *   "Incoming Request" | "Outgoing Request" | "Incoming Response"
+   *   "HTTP Incoming Request" | "HTTP Outgoing Response" | …
+   * Case-insensitive, whitespace-tolerant. null/undefined → fall back to
+   * parsing the message text.
+   */
+  direction?: string | null;
+
+  /** Pre-extracted URL (optional). If set, skips URL extraction from message. */
+  url?: string;
+  /** Pre-extracted HTTP method (optional). */
+  method?: string;
+  /** Pre-extracted HTTP status code (optional). */
+  status?: number;
+
   [extra: string]: unknown;
 }
 
@@ -1050,10 +1071,31 @@ const LEVEL_NAMES: Record<number, string> = {
   7: "DEBUG",
 };
 
-function parseIsoTimestamp(iso: string | undefined): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
+function parseIsoTimestamp(ts: string | number | undefined): number | null {
+  if (ts == null) return null;
+  if (typeof ts === "number") return Number.isFinite(ts) ? ts : null;
+  const t = Date.parse(ts);
   return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Normalize a direction hint into a phrase the classifier recognises.
+ * If the input is already a natural direction phrase (e.g. "HTTP Incoming
+ * Request"), we pass it through. Otherwise we map canonical tokens.
+ *
+ * Returns null if we can't make sense of it — the message text is then
+ * used for classification (and may end up UNKNOWN).
+ */
+function directionToPhrase(d: string | null | undefined): string | null {
+  if (!d) return null;
+  const s = d.trim();
+  if (s.length === 0) return null;
+  const u = s.toLowerCase();
+  if (u === "in") return "Incoming Request";
+  if (u === "out") return "Outgoing Request";
+  if (u === "response" || u === "res") return "Incoming Response";
+  // Already a phrase — use as-is; classifier regexes are substring-based.
+  return s;
 }
 
 const POD_SUFFIX_RE = /-[a-z0-9]{5,10}-[a-z0-9]{5}$/;
@@ -1086,7 +1128,19 @@ export function fromMessageContent(messages: readonly MessageContent[]): RawEven
       parseIsoTimestamp(m.timestamp) ??
       parseIsoTimestamp(m.time);
     const rid = pickRequestId(m);
-    const enrichedMessage = rid ? `${rawMessage} requestId=${rid}` : rawMessage;
+
+    // Build an "enriched message" by appending structured hints as
+    // key=value / marker phrases. Downstream stages (classify/normalize)
+    // are text-based, so this lets the user pass fields directly instead
+    // of having to stuff them into the human message string.
+    const hints: string[] = [];
+    if (rid) hints.push(`requestId=${rid}`);
+    const dirPhrase = directionToPhrase(m.direction as string | null | undefined);
+    if (dirPhrase) hints.push(dirPhrase);
+    if (typeof m.method === "string" && m.method.length > 0) hints.push(m.method.toUpperCase());
+    if (typeof m.url === "string" && m.url.length > 0) hints.push(`url=${m.url}`);
+    if (typeof m.status === "number") hints.push(`status=${m.status}`);
+    const enrichedMessage = hints.length > 0 ? `${rawMessage} ${hints.join(" ")}` : rawMessage;
     const level = typeof m.level === "number" ? LEVEL_NAMES[m.level] ?? null : null;
 
     out.push({
