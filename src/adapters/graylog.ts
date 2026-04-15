@@ -10,6 +10,7 @@
 //   const trace = run(fromMessageContent(messages));
 
 import type { MessageContent, RawEvent } from "../types.ts";
+import { parseInlineIsoTimestamp } from "../utils/time.ts";
 
 // Graylog numeric level → syslog-style name.
 const LEVEL_NAMES: Record<number, string> = {
@@ -74,9 +75,16 @@ export function fromMessageContent(messages: readonly MessageContent[]): RawEven
   let lineNo = 0;
   for (const m of messages) {
     lineNo += 1;
-    const ts = parseIsoTimestamp(m.timestamp) ?? parseIsoTimestamp(m.time);
-    const rid = pickRequestId(m);
     const rawMessage = typeof m.message === "string" ? m.message : String(m.message);
+    // Prefer the inline `[ISO]` timestamp from the message body — it reflects
+    // the moment the log line was written. Graylog's `timestamp` / `time`
+    // fields can be ingestion time, which is shifted (seen ~0.6s drift in
+    // real logs) and breaks causal ordering across services.
+    const ts =
+      parseInlineIsoTimestamp(rawMessage) ??
+      parseIsoTimestamp(m.timestamp) ??
+      parseIsoTimestamp(m.time);
+    const rid = pickRequestId(m);
     const enrichedMessage = rid ? `${rawMessage} requestId=${rid}` : rawMessage;
     const level = typeof m.level === "number" ? LEVEL_NAMES[m.level] ?? null : null;
 

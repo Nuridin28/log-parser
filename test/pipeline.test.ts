@@ -19,8 +19,9 @@ function types(graph: Trace): string[] {
   return graph.edges.map((e) => e.type);
 }
 
-test("case1 — normal flow produces matched REQUEST/RESPONSE edges", () => {
-  const graph = run(load("case1-normal.log"));
+test("case1 — normal flow produces matched REQUEST/RESPONSE edges (spec-mode)", () => {
+  // Spec §10 case 1 uses the synthetic `client` lifeline — explicitly opt in.
+  const graph = run(load("case1-normal.log"), { includeClient: true });
   assert.ok(graph.edges.length >= 4);
   assert.ok(graph.edges.some((e) => e.type === "REQUEST"));
   assert.ok(graph.edges.some((e) => e.type === "RESPONSE"));
@@ -150,5 +151,39 @@ test("service kinds are classified correctly", () => {
   const kinds = new Map(graph.services.map((s) => [s.name, s.kind]));
   assert.equal(kinds.get("api"), "container");
   assert.equal(kinds.get("external:api.stripe.com"), "external");
+  // By default there's no synthetic client node.
+  assert.equal(kinds.get("client"), undefined);
+});
+
+test("case9 — OUT+IN paired by requestId merge into one edge (no external)", () => {
+  const raw = readFileSync(join(EXAMPLES, "case9-paired-dedup.json"), "utf8");
+  const messages = JSON.parse(raw) as MessageContent[];
+  const graph = run(fromMessageContent(messages));
+
+  // service1 logs an OUT to `http://some-random-hostname/...` AND service2
+  // logs an IN with the same requestId. Without correlation we would emit
+  // both `service1 → external:some-random-hostname` AND `service1 → service2`.
+  // With correlation: OUT.receiver inferred = service2 → both edges become
+  // `service1 → service2`, and dedup (same requestId) collapses them.
+  const externals = graph.services.filter((s) => s.kind === "external");
+  assert.equal(externals.length, 0, `no external nodes expected, got ${JSON.stringify(externals)}`);
+
+  const req = graph.edges.filter(
+    (e) => e.from === "service1" && e.to === "service2" && e.type === "REQUEST",
+  );
+  assert.equal(req.length, 1, `expected exactly 1 service1→service2 REQUEST, got ${req.length}`);
+
+  const res = graph.edges.filter(
+    (e) => e.from === "service2" && e.to === "service1" && e.type === "RESPONSE",
+  );
+  assert.equal(res.length, 1, `expected exactly 1 service2→service1 RESPONSE, got ${res.length}`);
+});
+
+test("includeClient: true restores synthetic client node (spec mode)", () => {
+  const graph = run(load("case6-third-party.log"), { includeClient: true });
+  const kinds = new Map(graph.services.map((s) => [s.name, s.kind]));
   assert.equal(kinds.get("client"), "client");
+  assert.ok(
+    graph.edges.some((e) => e.from === "client" && e.to === "api" && e.type === "REQUEST"),
+  );
 });

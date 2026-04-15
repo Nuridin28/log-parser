@@ -86,6 +86,15 @@ export interface Event {
    * external host. Null if the event has no URL and no receiver.
    */
   resolvedPeer: string | null;
+  /**
+   * True when correlate paired this event with a counterpart on the
+   * other side of a cross-service hop. Currently set only for INs
+   * that are paired with a caller's OUT (same requestId). When true,
+   * stack.ts suppresses this event's REQUEST edge (the OUT already
+   * emitted the logical edge) and skips INFERRED_RESPONSE emission
+   * if backtracking walks past this frame.
+   */
+  isPaired: boolean;
   message: string;
   raw: string;
   lineNo: number;
@@ -101,6 +110,8 @@ export interface Edge {
   timestamp: number | null;
   confidence: number;
   evidence: string[];
+  /** requestId of the source event — used for cross-side dedup. */
+  requestId: string | null;
 }
 
 /**

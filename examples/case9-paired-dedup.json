@@ -1,0 +1,37 @@
+[
+  {
+    "container": "service1",
+    "requestId": "rid-9",
+    "timestamp": "2026-04-13T12:00:00.100Z",
+    "level": 6,
+    "message": "[2026-04-13T12:00:00.100Z] [INFO] [requestId=rid-9] Incoming request: POST /entry"
+  },
+  {
+    "container": "service1",
+    "requestId": "rid-9",
+    "timestamp": "2026-04-13T12:00:00.200Z",
+    "level": 6,
+    "message": "[2026-04-13T12:00:00.200Z] [INFO] [requestId=rid-9] Proxy Outgoing Request {\"request\":{\"url\":\"http://some-random-hostname/api/task\",\"method\":\"POST\"}}"
+  },
+  {
+    "container": "service2",
+    "requestId": "rid-9",
+    "timestamp": "2026-04-13T12:00:00.250Z",
+    "level": 6,
+    "message": "[2026-04-13T12:00:00.250Z] [INFO] [requestId=rid-9] Incoming request POST /api/task"
+  },
+  {
+    "container": "service2",
+    "requestId": "rid-9",
+    "timestamp": "2026-04-13T12:00:00.400Z",
+    "level": 6,
+    "message": "[2026-04-13T12:00:00.400Z] [INFO] [requestId=rid-9] http_status=200"
+  },
+  {
+    "container": "service1",
+    "requestId": "rid-9",
+    "timestamp": "2026-04-13T12:00:00.500Z",
+    "level": 6,
+    "message": "[2026-04-13T12:00:00.500Z] [INFO] [requestId=rid-9] Proxy Incoming Response {\"response\":{\"url\":\"http://some-random-hostname/api/task\",\"status\":200}}"
+  }
+]

@@ -40,6 +40,7 @@ export function buildGraph({
     // to return to; we only close them if includeClient explicitly asks
     // for the synthetic `client` lifeline.
     if (!frame.edge) continue;
+    if (frame.ev.isPaired) continue; // paired IN — its edge is already represented by the OUT side
     if (!includeClient && frame.edge.from === "client") continue;
     closedEdges.push({
       from: frame.edge.to,
@@ -50,18 +51,25 @@ export function buildGraph({
       timestamp: frame.ev.timestamp,
       confidence: 0.4,
       evidence: [frame.ev.id],
+      requestId: frame.ev.requestId,
     });
   }
 
-  const publicEdges: PublicEdge[] = closedEdges.map((e) => ({
+  // Dedupe edges that describe the same cross-service call from both
+  // sides. When correlate pairs an OUT (from caller) with an IN (on
+  // callee), both produce a `caller → callee` REQUEST edge. We fold them
+  // into one, keeping the richer message (or the higher-confidence one).
+  const deduped = dedupeEdges(closedEdges);
+
+  const publicEdges: PublicEdge[] = deduped.map((e) => ({
     from: e.from,
     to: e.to,
     message: e.message,
     type: e.type,
   }));
 
-  const services = collectServices(closedEdges);
-  const confidence = aggregateConfidence(closedEdges);
+  const services = collectServices(deduped);
+  const confidence = aggregateConfidence(deduped);
   const parallel = detectParallel(events);
 
   const trace: Trace = {
@@ -127,4 +135,60 @@ function detectParallel(events: readonly Event[]): boolean {
 
 function round(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Collapse edges that describe the same logical call from two sides.
+ *
+ * Two edges merge iff:
+ *   - identical from, to, and type, AND
+ *   - both carry a non-null `requestId`, AND
+ *   - those requestIds are equal.
+ *
+ * The `requestId` check is what makes this safe — two unrelated calls
+ * (e.g. two sequential calls to api.stripe.com) have distinct source
+ * events whose requestIds differ (or are null), so they are NOT merged.
+ * Only events that share a correlation ID, which means they are the
+ * OUT and IN sides of the same cross-service hop, get folded together.
+ *
+ * On merge we keep the edge with the higher confidence / richer message,
+ * and union their evidence lists.
+ */
+function dedupeEdges(edges: readonly Edge[]): Edge[] {
+  const out: Edge[] = [];
+  for (const e of edges) {
+    if (!e.requestId) {
+      out.push(e);
+      continue;
+    }
+    const existing = out.find(
+      (x) =>
+        x.requestId === e.requestId &&
+        x.from === e.from &&
+        x.to === e.to &&
+        x.type === e.type,
+    );
+    if (!existing) {
+      out.push(e);
+      continue;
+    }
+    const union = [...new Set([...existing.evidence, ...e.evidence])];
+    if (preferReplacement(e, existing)) {
+      const idx = out.indexOf(existing);
+      out[idx] = { ...e, evidence: union, confidence: Math.max(existing.confidence, e.confidence) };
+    } else {
+      existing.evidence = union;
+      existing.confidence = Math.max(existing.confidence, e.confidence);
+    }
+  }
+  return out;
+}
+
+function preferReplacement(candidate: Edge, incumbent: Edge): boolean {
+  if (candidate.confidence !== incumbent.confidence) {
+    return candidate.confidence > incumbent.confidence;
+  }
+  const cm = candidate.message?.length ?? 0;
+  const im = incumbent.message?.length ?? 0;
+  return cm > im;
 }

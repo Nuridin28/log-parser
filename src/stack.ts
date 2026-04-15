@@ -42,6 +42,7 @@ function makeEdge(args: {
     timestamp: args.ev?.timestamp ?? null,
     confidence: round(args.confidence),
     evidence: args.evidence ?? [],
+    requestId: args.ev?.requestId ?? null,
   };
 }
 
@@ -94,7 +95,11 @@ function handleRequest(ev: Event, edges: Edge[], includeClient: boolean): Edge |
     confidence: baseConfidence(ev),
     evidence: [ev.id],
   });
-  edges.push(edge);
+  // A paired IN describes the same logical call as its counterpart OUT.
+  // We still create the edge (for response-direction bookkeeping on the
+  // frame) but do NOT emit it — the OUT's emission is the authoritative
+  // one for the diagram.
+  if (!ev.isPaired) edges.push(edge);
   return edge;
 }
 
@@ -148,8 +153,10 @@ function handleResponse(
     const upper = stack[i]!;
     if (upper.ev.service === matchedCaller) {
       preserved.unshift(upper);
-    } else if (upper.edge) {
-      // Skipped: emit INFERRED_RESPONSE back to its caller.
+    } else if (upper.edge && !upper.ev.isPaired) {
+      // Skipped: emit INFERRED_RESPONSE back to its caller. Paired INs
+      // are silently dropped — their logical edge is already represented
+      // by the paired OUT's RESPONSE half.
       edges.push(
         makeEdge({
           from: upper.edge.to,

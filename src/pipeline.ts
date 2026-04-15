@@ -31,8 +31,12 @@ function isRawEventArray(x: PipelineInput): x is readonly RawEvent[] {
 }
 
 export function run(input: PipelineInput): Trace;
-export function run(input: PipelineInput, opts: { debug: true }): DebugTrace;
-export function run(input: PipelineInput, opts?: PipelineOptions): Trace | DebugTrace;
+export function run(input: PipelineInput, opts: PipelineOptions & { debug: true }): DebugTrace;
+export function run(
+  input: PipelineInput,
+  opts: Omit<PipelineOptions, "debug"> & { debug?: false | undefined },
+): Trace;
+export function run(input: PipelineInput, opts: PipelineOptions): Trace | DebugTrace;
 export function run(input: PipelineInput, opts: PipelineOptions = {}): Trace | DebugTrace {
   resetIds();
 

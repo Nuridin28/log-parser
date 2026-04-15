@@ -1,28 +1,29 @@
-// Correlation stage — wires up sender/receiver for events that share
+// Correlation stage — wires up sender / receiver for events that share
 // a `requestId` but didn't have explicit sender/receiver fields.
 //
-// In real distributed traces the story looks like:
+// This is what lets us say "service1 called service2" even when service1
+// doesn't log an explicit outgoing line — we see service2's IN event and,
+// because they share a requestId, we know who called.
 //
-//   service   [IN]  POST /api/url         requestId=X        ← entry point
-//   service   ...internal processing...   requestId=X
-//   service2  [IN]  HTTP Incoming         requestId=X        ← was called by service
-//   service2  [OUT] Proxy Outgoing        requestId=X        ← calls third party
-//   service2  [RES] Proxy Incoming        requestId=X        ← third party replied
-//   service2  [RES] HTTP Outgoing         requestId=X        ← replies to service
+// It is also what prevents creation of bogus `external:<host>` nodes
+// when service1 logs an Outgoing Request to a URL whose host doesn't
+// look like any known container, but the actual callee (service2) does
+// have correlated IN logs in the batch. Without this, we'd emit BOTH
+// `service1 → external:<host>` AND `service1 → service2`.
 //
-// Every event carries the same `requestId`, but `service` never logs an
-// explicit "I'm calling service2" line — yet we want the graph to show
-// `service → service2`. Without this stage `service2`'s IN would look
-// like it came from the synthetic `client`.
+// Two inferences per requestId group (groups sorted by timestamp):
 //
-// Algorithm:
-//   For each requestId group, sort by timestamp. For every IN event
-//   without an explicit sender, set sender = the service of the most
-//   recent earlier event from a *different* service.
+//   A) IN without sender
+//      → find the most recent earlier event from a DIFFERENT service.
+//         That service is the caller. Set sender = that.service.
 //
-// The stack/matcher then does the right thing automatically — when the
-// corresponding RESPONSE fires, it reverses the inferred (sender→receiver)
-// edge and produces `service2 → service`.
+//   B) OUT without receiver
+//      → find the nearest later IN from a DIFFERENT service.
+//         That service is the callee. Set receiver = that.service.
+//
+// After correlate, virtualize uses receiver/sender before falling back
+// to URL-based naming, so an OUT with an inferred receiver goes to
+// the known container rather than an external: node.
 
 import type { Event } from "./types.ts";
 
@@ -35,11 +36,13 @@ export function correlate(events: readonly Event[]): Event[] {
     byRequestId.set(ev.requestId, list);
   }
 
-  // eventId → inferred sender
-  const inferred = new Map<string, string>();
+  const inferredSender = new Map<string, string>();
+  const inferredReceiver = new Map<string, string>();
+  const paired = new Set<string>(); // eventIds of INs paired with an OUT
 
   for (const group of byRequestId.values()) {
     if (group.length < 2) continue;
+
     const sorted = [...group].sort((a, b) => {
       const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
       const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
@@ -49,23 +52,50 @@ export function correlate(events: readonly Event[]): Event[] {
 
     for (let i = 0; i < sorted.length; i++) {
       const ev = sorted[i]!;
-      if (ev.type !== "IN") continue;
-      if (ev.sender) continue;
 
-      // Most recent earlier event from a *different* service.
-      for (let j = i - 1; j >= 0; j--) {
-        const prev = sorted[j]!;
-        if (prev.service && prev.service !== ev.service) {
-          inferred.set(ev.id, prev.service);
-          break;
+      // (A) Infer sender for IN events. If the inference points to an
+      // earlier OUT from another service, mark this IN as paired — we
+      // are going to fold both sides into one edge, so the IN's own
+      // REQUEST emission should be suppressed.
+      if (ev.type === "IN" && !ev.sender) {
+        for (let j = i - 1; j >= 0; j--) {
+          const prev = sorted[j]!;
+          if (prev.service && prev.service !== ev.service) {
+            inferredSender.set(ev.id, prev.service);
+            if (prev.type === "OUT") paired.add(ev.id);
+            break;
+          }
+        }
+      }
+
+      // (B) Infer receiver for OUT events.
+      if (ev.type === "OUT" && !ev.receiver) {
+        for (let j = i + 1; j < sorted.length; j++) {
+          const next = sorted[j]!;
+          if (next.type !== "IN") continue;
+          if (next.service && next.service !== ev.service) {
+            inferredReceiver.set(ev.id, next.service);
+            paired.add(next.id);
+            break;
+          }
         }
       }
     }
   }
 
-  if (inferred.size === 0) return events.slice();
+  if (inferredSender.size === 0 && inferredReceiver.size === 0 && paired.size === 0) {
+    return events.slice();
+  }
   return events.map((ev) => {
-    const s = inferred.get(ev.id);
-    return s && !ev.sender ? { ...ev, sender: s } : ev;
+    const sUpd = inferredSender.get(ev.id);
+    const rUpd = inferredReceiver.get(ev.id);
+    const isPaired = paired.has(ev.id);
+    if (!sUpd && !rUpd && !isPaired) return ev;
+    return {
+      ...ev,
+      sender: ev.sender ?? sUpd ?? null,
+      receiver: ev.receiver ?? rUpd ?? null,
+      isPaired: ev.isPaired || isPaired,
+    };
   });
 }
