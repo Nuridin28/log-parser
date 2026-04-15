@@ -27,6 +27,40 @@
 
 import type { Event } from "./types.ts";
 
+/**
+ * Extract just the path portion of a URL.
+ *
+ *   https://host/api/task   → "/api/task"
+ *   some-host/api/task      → "/api/task"
+ *   /api/task               → "/api/task"
+ *   https://host            → "/"
+ */
+function extractPath(url: string): string {
+  const abs = url.match(/^https?:\/\/[^\/]+(\/.*)?$/i);
+  if (abs) return (abs[1] ?? "/").split(/[?#]/)[0]!;
+  if (url.startsWith("/")) return url.split(/[?#]/)[0]!;
+  const slash = url.indexOf("/");
+  if (slash !== -1) return url.slice(slash).split(/[?#]/)[0]!;
+  return "/";
+}
+
+/**
+ * Do two URLs describe the same endpoint?
+ *
+ * Different services usually log a URL with slightly different prefixes
+ * (caller knows the full path, callee sees it relative to its route
+ * mount point). We declare a match when either side's path is a suffix
+ * of the other — covers both equality and prefix-trim cases.
+ */
+function pathsMatch(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const pa = extractPath(a);
+  const pb = extractPath(b);
+  if (pa === pb) return true;
+  if (pa.endsWith(pb) || pb.endsWith(pa)) return true;
+  return false;
+}
+
 export function correlate(events: readonly Event[]): Event[] {
   const byRequestId = new Map<string, Event[]>();
   for (const ev of events) {
@@ -68,16 +102,21 @@ export function correlate(events: readonly Event[]): Event[] {
         }
       }
 
-      // (B) Infer receiver for OUT events.
+      // (B) Infer receiver for OUT events. This is riskier than (A) — we
+      // look FORWARD, and multiple unrelated calls may share a requestId.
+      // Pair only when the OUT and the candidate IN agree on URL path —
+      // otherwise we'd happily bind a proxy's "OUT /authrealms/..." to
+      // some completely unrelated later backend IN.
       if (ev.type === "OUT" && !ev.receiver) {
         for (let j = i + 1; j < sorted.length; j++) {
           const next = sorted[j]!;
           if (next.type !== "IN") continue;
-          if (next.service && next.service !== ev.service) {
+          if (!next.service || next.service === ev.service) continue;
+          if (pathsMatch(ev.url, next.url)) {
             inferredReceiver.set(ev.id, next.service);
             paired.add(next.id);
-            break;
           }
+          break; // stop at first candidate, paired or not
         }
       }
     }

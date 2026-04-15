@@ -20,24 +20,26 @@ export const VIRTUAL_PREFIX = "virtual:";
 export const UNKNOWN_PREFIX = "unknown:";
 
 /**
- * Extract the host from a URL.
+ * Extract the host from a URL, or null if the URL is a pure path.
  *
  *   https://api.stripe.com/charges        → "api.stripe.com"
  *   http://payment:8080/api               → "payment:8080"
  *   ipOfServiceOutg/auth/realms/token     → "ipOfServiceOutg"   (no protocol)
- *   /api/url                              → "/api/url"          (pure path)
+ *   /api/url                              → null                (pure path, no host)
  *
- * When the input has no protocol and no leading slash, we treat everything
- * before the first "/" as the host — real logs often omit the scheme but
- * still put host-like tokens up front.
+ * A pure path (starts with "/") carries no destination information — it's
+ * the ROUTE being served by whoever logged it, not an external target. We
+ * return null so callers fall back to alternative peer resolution instead
+ * of creating a bogus `external:/api/url` node.
  */
-export function urlHost(url: string): string {
+export function urlHost(url: string): string | null {
   const abs = url.match(/^https?:\/\/([^\/\s?#]+)/i);
   if (abs) return abs[1]!;
-  if (url.startsWith("/")) return url.split(/[?#]/)[0]!;
+  if (url.startsWith("/")) return null;
   const slash = url.indexOf("/");
   const beforeSlash = slash === -1 ? url : url.slice(0, slash);
-  return beforeSlash.split(/[?#]/)[0]!;
+  const host = beforeSlash.split(/[?#]/)[0]!;
+  return host.length > 0 ? host : null;
 }
 
 /** Strip ":port" suffix from a host. "payment:8080" → "payment". */
@@ -72,11 +74,13 @@ function matchKnownContainer(host: string, known: ReadonlySet<string>): string |
 
 /**
  * Derive a target identifier from a URL:
+ *   - pure path (no host info) → null       (caller must fall back)
  *   - matches a known container → plain container name (kind=container)
  *   - otherwise                 → external:<host>  (kind=external)
  */
-function targetFromUrl(url: string, known: ReadonlySet<string>): string {
+function targetFromUrl(url: string, known: ReadonlySet<string>): string | null {
   const host = urlHost(url);
+  if (!host) return null;
   const matched = matchKnownContainer(host, known);
   return matched ?? `${EXTERNAL_PREFIX}${stripPort(host)}`;
 }
@@ -100,22 +104,26 @@ export function virtualize(events: readonly Event[]): Event[] {
     // --- service (who wrote this log) --------------------------------
     let service = ev.service && ev.service.length > 0 ? ev.service : "";
     if (!service) {
-      // No container — try sender (explicit), then URL-host match.
       if (ev.sender) service = ev.sender;
-      else if (ev.url) service = targetFromUrl(ev.url, known);
-      else if (ev.receiver) service = `${VIRTUAL_PREFIX}${ev.receiver}`;
-      else service = `${UNKNOWN_PREFIX}${hash(ev.raw || ev.message || ev.id)}`;
+      else {
+        const fromUrl = ev.url ? targetFromUrl(ev.url, known) : null;
+        if (fromUrl) service = fromUrl;
+        else if (ev.receiver) service = `${VIRTUAL_PREFIX}${ev.receiver}`;
+        else service = `${UNKNOWN_PREFIX}${hash(ev.raw || ev.message || ev.id)}`;
+      }
     }
 
     // --- resolvedPeer (the other side) -------------------------------
+    // Pure paths like "/api/identity/v2/access_token" describe the route
+    // served by `service` itself, NOT a destination — they must not produce
+    // a peer (targetFromUrl returns null for such URLs).
     let resolvedPeer: string | null = null;
     if (ev.receiver) {
-      // Receiver is explicit — trust it, but still check if it's a known
-      // container (it usually will be, because collectKnownContainers adds it).
       resolvedPeer = ev.receiver;
     } else if (ev.url) {
       resolvedPeer = targetFromUrl(ev.url, known);
-    } else if (ev.sender && ev.sender !== service) {
+    }
+    if (!resolvedPeer && ev.sender && ev.sender !== service) {
       resolvedPeer = ev.sender;
     }
 

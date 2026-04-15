@@ -393,6 +393,24 @@ function classify(events: readonly Event[]): Event[] {
    STAGE 3.5 — correlate (cross-service requestId inference)
    ========================================================================== */
 
+function extractPath(url: string): string {
+  const abs = url.match(/^https?:\/\/[^\/]+(\/.*)?$/i);
+  if (abs) return (abs[1] ?? "/").split(/[?#]/)[0]!;
+  if (url.startsWith("/")) return url.split(/[?#]/)[0]!;
+  const slash = url.indexOf("/");
+  if (slash !== -1) return url.slice(slash).split(/[?#]/)[0]!;
+  return "/";
+}
+
+function pathsMatch(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const pa = extractPath(a);
+  const pb = extractPath(b);
+  if (pa === pb) return true;
+  if (pa.endsWith(pb) || pb.endsWith(pa)) return true;
+  return false;
+}
+
 function correlate(events: readonly Event[]): Event[] {
   const byRequestId = new Map<string, Event[]>();
   for (const ev of events) {
@@ -429,15 +447,19 @@ function correlate(events: readonly Event[]): Event[] {
         }
       }
 
+      // Pair only when OUT and candidate IN agree on URL path — avoids
+      // binding an external-facing OUT to some unrelated later backend IN
+      // that just happens to share the same requestId.
       if (ev.type === "OUT" && !ev.receiver) {
         for (let j = i + 1; j < sorted.length; j++) {
           const next = sorted[j]!;
           if (next.type !== "IN") continue;
-          if (next.service && next.service !== ev.service) {
+          if (!next.service || next.service === ev.service) continue;
+          if (pathsMatch(ev.url, next.url)) {
             inferredReceiver.set(ev.id, next.service);
             paired.add(next.id);
-            break;
           }
+          break;
         }
       }
     }
@@ -468,13 +490,20 @@ const EXTERNAL_PREFIX = "external:";
 const VIRTUAL_PREFIX = "virtual:";
 const UNKNOWN_PREFIX = "unknown:";
 
-function urlHost(url: string): string {
+/**
+ * Host part of a URL, or null if the URL is a pure path (no host info).
+ * Pure paths like "/api/url" describe the route served by the logger
+ * itself — not a destination — so we refuse to derive an external node
+ * from them.
+ */
+function urlHost(url: string): string | null {
   const abs = url.match(/^https?:\/\/([^\/\s?#]+)/i);
   if (abs) return abs[1]!;
-  if (url.startsWith("/")) return url.split(/[?#]/)[0]!;
+  if (url.startsWith("/")) return null;
   const slash = url.indexOf("/");
   const beforeSlash = slash === -1 ? url : url.slice(0, slash);
-  return beforeSlash.split(/[?#]/)[0]!;
+  const host = beforeSlash.split(/[?#]/)[0]!;
+  return host.length > 0 ? host : null;
 }
 
 function stripPort(host: string): string {
@@ -492,8 +521,9 @@ function matchKnownContainer(host: string, known: ReadonlySet<string>): string |
   return null;
 }
 
-function targetFromUrl(url: string, known: ReadonlySet<string>): string {
+function targetFromUrl(url: string, known: ReadonlySet<string>): string | null {
   const host = urlHost(url);
+  if (!host) return null;
   const matched = matchKnownContainer(host, known);
   return matched ?? `${EXTERNAL_PREFIX}${stripPort(host)}`;
 }
@@ -515,15 +545,23 @@ function virtualize(events: readonly Event[]): Event[] {
     let service = ev.service && ev.service.length > 0 ? ev.service : "";
     if (!service) {
       if (ev.sender) service = ev.sender;
-      else if (ev.url) service = targetFromUrl(ev.url, known);
-      else if (ev.receiver) service = `${VIRTUAL_PREFIX}${ev.receiver}`;
-      else service = `${UNKNOWN_PREFIX}${hash(ev.raw || ev.message || ev.id)}`;
+      else {
+        const fromUrl = ev.url ? targetFromUrl(ev.url, known) : null;
+        if (fromUrl) service = fromUrl;
+        else if (ev.receiver) service = `${VIRTUAL_PREFIX}${ev.receiver}`;
+        else service = `${UNKNOWN_PREFIX}${hash(ev.raw || ev.message || ev.id)}`;
+      }
     }
 
+    // Pure paths ("/api/identity/v2/access_token") describe the route
+    // served by `service` itself, NOT a destination — targetFromUrl
+    // returns null for them, so we don't invent a peer.
     let resolvedPeer: string | null = null;
     if (ev.receiver) resolvedPeer = ev.receiver;
     else if (ev.url) resolvedPeer = targetFromUrl(ev.url, known);
-    else if (ev.sender && ev.sender !== service) resolvedPeer = ev.sender;
+    if (!resolvedPeer && ev.sender && ev.sender !== service) {
+      resolvedPeer = ev.sender;
+    }
 
     return { ...ev, service, resolvedPeer };
   });

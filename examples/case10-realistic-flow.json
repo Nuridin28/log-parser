@@ -1,0 +1,79 @@
+[
+  {
+    "container": "frontend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.615Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.615Z] [INFO] [requestId=rid-10] Incoming request: POST /api/select-product"
+  },
+  {
+    "container": "frontend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.620Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.620Z] [INFO] [requestId=rid-10] Processing /api/select-product"
+  },
+  {
+    "container": "frontend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.628Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.628Z] [INFO] [requestId=rid-10] About to proxy /ngil/identity/v2"
+  },
+  {
+    "container": "proxy",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.664Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.664Z] [INFO] [requestId=rid-10] HTTP Incoming Request {\"request\":{\"method\":\"POST\",\"url\":\"/ngil/identity/v2\"}}"
+  },
+  {
+    "container": "proxy",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.668Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.668Z] [INFO] [requestId=rid-10] Proxy Outgoing Request {\"request\":{\"method\":\"POST\",\"url\":\"auth-realm-host/authrealms/customer/protocol\"}}"
+  },
+  {
+    "container": "proxy",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.681Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.681Z] [INFO] [requestId=rid-10] Proxy Incoming Response {\"response\":{\"url\":\"auth-realm-host/authrealms/customer/protocol\",\"status\":200}}"
+  },
+  {
+    "container": "proxy",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.683Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.683Z] [INFO] [requestId=rid-10] HTTP Outgoing Response {\"response\":{\"url\":\"/ngil/identity/v2\",\"status\":200}}"
+  },
+  {
+    "container": "frontend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.686Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.686Z] [INFO] [requestId=rid-10] Got response /ngil/identity/v2"
+  },
+  {
+    "container": "frontend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.687Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.687Z] [INFO] [requestId=rid-10] Preparing GraphQL request /graphql"
+  },
+  {
+    "container": "backend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.712Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.712Z] [INFO] [requestId=rid-10] Incoming request POST /graphql"
+  },
+  {
+    "container": "backend",
+    "requestId": "rid-10",
+    "timestamp": "2026-04-13T15:54:26.713Z",
+    "level": 6,
+    "message": "[2026-04-13T15:54:26.713Z] [INFO] [requestId=rid-10] Incoming GQL mutation selectProduct"
+  }
+]
